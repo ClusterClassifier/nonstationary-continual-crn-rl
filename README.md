@@ -24,22 +24,22 @@ The framework was evaluated across a 7-task diurnal cycle (T1 to T7), ranging fr
 
 ## **🗂️ Repository Structure**
 
-* train.py: The main entry point. Coordinates the sequential training loop, ADWIN drift signals, EWC updates, and MEC offloading.  
-* evaluate.py: Executes the IEEE evaluation protocol, generating the ![][image2] matrix, Forgetting Rate (FR), and Backward Transfer (BWT).  
-* agents.py: Contains the Feedforward DQN architecture and Boltzmann exploration policy.  
-* env.py: Simulates the non-stationary 8-channel CRN environment across 7 distinct diurnal tasks.  
-* ewc.py: Implements the Elastic Weight Consolidation logic and adaptive ![][image1] penalty scheduler.  
-* cpd.py: Wraps the river ADWIN algorithm for autonomous concept drift detection based on TD-error.  
-* replay.py: Manages the standard experience replay buffer and the Top-K Episodic Memory buffer.  
-* mec\_server.py: Simulates an asynchronous Mobile Edge Computing (MEC) server to compute the Fisher Information Matrix (FIM) without blocking edge training.  
+* Training: The main entry point. Coordinates the sequential training loop, ADWIN drift signals, EWC updates, and MEC offloading.  
+* Evaluation: Executes the IEEE evaluation protocol, generating the evaluation matrix, Forgetting Rate (FR), and Backward Transfer (BWT).  
+* Agents: Contains the Feedforward DQN architecture and Boltzmann exploration policy.  
+* Environment: Simulates the non-stationary 8-channel CRN environment across 7 distinct diurnal tasks.  
+* Elastic Weight Consolidation: Implements the Elastic Weight Consolidation logic and adaptive ![][image1] penalty scheduler.  
+* Change-Point Detection: Wraps the river ADWIN algorithm for autonomous concept drift detection based on TD-error.  
+* Replay Classes: Manages the standard experience replay buffer and the Top-K Episodic Memory buffer.  
+* MEC Server: Simulates an asynchronous Mobile Edge Computing (MEC) server to compute the Fisher Information Matrix (FIM) without blocking edge training.  
 * app.py: A fully interactive, real-time web simulation dashboard built with Streamlit.  
-* export\_charts.py: Generates publication-quality .pdf evaluation heatmaps and performance evolution charts.
+* Exports: Generates publication-quality .pdf evaluation heatmaps and performance evolution charts.
 
 ## **🚀 Installation & Setup**
 
 1. Clone this repository:  
-   git clone https://github.com/YourUsername/continual-rl-crn.git  
-   cd continual-rl-crn
+   git clone https://github.com/ClusterClassifier/nonstationary-continual-crn-rl.git  
+   cd nonstationary-continual-crn-rl
 
 2. Install the required dependencies:  
    pip install \-r requirements.txt
@@ -70,18 +70,6 @@ streamlit run app.py
 
 The dashboard features an interactive 8-channel RF spectrum monitor, task switching, and real-time performance logging.
 
-## **📜 Citation & License**
+## License
+Distributed under the CC-BY-ND License. See `LICENSE` for more information.
 
-**CUSTOM ACADEMIC USE LICENSE (NO MODIFICATIONS PERMITTED)**
-
-Copyright (c) 2026 \[Your Name / Research Group\]. All rights reserved.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software to execute, run, evaluate, and cite the Software for academic, non-commercial, and evaluation purposes, subject to the following conditions:
-
-1. **ATTRIBUTION:** Any publication, presentation, paper, or derivative work that uses results produced by executing this Software must explicitly cite the original research paper:*\[Update this with your final IEEE paper title, authors, and DOI once published\]*  
-2. **NO MODIFICATIONS:** The Software may NOT be modified, adapted, translated, reverse engineered, decompiled, or altered in any way. Redistribution or public hosting of altered or modified versions of this code is strictly prohibited.  
-3. **RE-DISTRIBUTION:** You may redistribute verbatim, unmodified copies of the Software, provided that this copyright notice and permission notice appear in all copies.
-
-[image1]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAnCAYAAAA7HqkSAAACA0lEQVR4XpVUyyuEURSfv8VENBkixsKjpmGhPJIikigleaWURykbeSQLYuHVjAwWFBvyCMWMYmcjCztSlFgoZnF8534P537n3pHFr+9+557fPb/zuNezGf8GEwnYctYUCenfIxYx84cSGNnyMQnUydr4daIREuBhJ/0Bk2CdRCOwg7gkKzQj02Ik5BwY2QKNpiFYoAVwEyJn71Db0g/5hSEYnN6BjdjX3xGiF59Q09QLPn8uzGzdqgk0IVyPLhyB15sKnSOLkhRlBMTi/iMEDFmllU2wdv7himBXiXQUtde3DUOGLwum1m8cu0ygiKGsQyGrfWBWsuNXGj4by4fPECgqg2B5HYRP3/RJ22SUVdXQCWnpPpgIX5HDFJLQGaXkFpSANyUVWvsmpX1JUtRyDlU0wtzOvVGtMigOVcPKyatTGCcCntwxNA8FhvaFvQdha+4ZE7LGiSxB2IibzpnZeTAVuXY2UT8SmrvHfquEMrqMrmb4/DA8sytVbNWQgpKKghXG+sUkzG7fgT8nILQj2Xa2q4dJY09wZAQBta8ev0D08pPfaQNoXzp4Ev1wcnA70QjyjVMMH50rDkXj7A1mU82S7tWgD8L/3yW3IXkO9rTSKikI0o1jklg+rrIyAgN9EbWN00nS5qAHv6JsneTlE1AkqmmcnJxaqnaWkkwri8AI8voHiqL25aeYlmkAAAAASUVORK5CYII=>
-
-[image2]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACMAAAAlCAYAAADIgFBEAAAEWElEQVR4Xr1WSU8UQRTmn3AgIgoKQXSQgAZBSURAMMoywQ0lgKMS4xAEQRSFsLiggqCBcUYW14QoLhCBqMO4HryoFy8SDxqNGhdcODz71Ux3V3e97pkJ6OFLd6pevfrqe9+r7pCLD/+AiGnifRouCXHBg8+hzxeiD1bgwedsEOAPZg6aDCPy/0GTMYCRSmbSa2GutELGLCgYqSlVvbl9OYh5GUEp86+hIaOqo1OCOI25kkQOAWLJZr9MJqD3UHNrlOkeeQ8bbYdh/Ra7hL3e52Z8t0OhrR6aXU+gf+InkTBAEArzIDwzDTuqz0BoaCiUHzqvjOOpSipPsXFraZ0Sy68TcwUGWbEQrcunYcA9BWs2FEP43PnQ6JjQLCqr7mBkUtcUgGv8i5BUAz8qULGCMt0j78CStIoB3+XgfvdPyMwvY2S27mkWE/qDb0OmggHREP1Eo8PNVMmy2mDA81sZR7/Mi4xmqjhGP/rG/ZSG2pQa80FQBn2Cpy+uOAFnb72Fs7ffwqZdDRAVs1jyzEm4cO+rkEQPqmuoMT00ZPrRL7nFEBY2B1avK1K6Kio6Dhp63MJi5/hnKNrTCtmFu6GuY0Td1PD0kielbuwefid15ZQwr2ttwi8SVmYWQtzSZOgcesMS8mu6hiYhflkatFx4KiSnUNc+DNGL4uHk1VfCnErGg36ZYH7BbkKV5PGsAhvzS0vvM0FuXJOYkqkhbwbMq3pOC40yZcr94tQEJa7IUMjoE+AamTxK77j7QWN8Hr33v7ESGc0rZJhf2P0SCQ26+2X+ghhYGGuB9sHXmnFsd1yDpse5gpJaSM2wslLoN2qVDoK3+1rrTiir6tDMcZee96Xr5iQssizj/KJ6Aw0duySJdReaNqewnHmlUwLGI5mK5ivQdvkFWBJXQpPrsUCmVLq98cDYmfnF+4V5RubIuXswJzyClYdHZl6p8h3CuwW9hJ8Da8kBsNWcY+ONPZLHIiIhSSojGnjA80vwlAwkgrc25qo+fh30jYDrhHuG+t5gIvTLvmODcGzguVJz2S/YZWjiytZrLLbvwQ/vev7WlYClTEheDW1XXgp7IAgyAYB9HqYgA/1Sf14y5ldIy97MTlxz6hYjLt9B9V1jCqlDnaOQkp4PzrFPSi5eSS8Z30dS3VD88dEDfZWUmgVNzkdMKTRv3vYq2G4/zoji70hCcrq33G5vuc38wpWJ2Jy6RXUfO/SAXDJ8Ylvz/zuusS+w+2APm0OlVqTnMeWEvD6wXwiVCPHh85j8jvoZR1PXnr4D2+xHWbmWp+WwLtTHyTkMPSMoRalngr4H36FKMjxehOX1TsgtqoTOG29McxiSmU14CYitrInzmJARgilQvjIFXU553JCMfrGRbwTSQmcGDj9k/i8CI0OcVm5vIXYGUMjwcgvSyyA2F2KJmEBhogzlF2LzoGHsJxMy3OIZnNYvuNzaMvGbGhII7vLj4W+dqozh5gTRGcG4TH8B11F3g9n+nn4AAAAASUVORK5CYII=>
