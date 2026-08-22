@@ -148,11 +148,11 @@ with st.sidebar:
 
     speed = st.slider("Simulation Speed (Delay in sec)", 0.0, 1.0, 0.1)
     
-    if st.button("▶️ Start / Pause Simulation"):
+    if st.button("Start / Pause Simulation"):
         st.session_state.is_running = not st.session_state.is_running
 
-st.title("📡 Cognitive Radio Network: Live AI Inference")
-st.markdown("This dashboard runs the **actual PyTorch DQN** in real-time. Watch it adapt to PU traffic.")
+st.title("📡 Non-Stationary Continual Cognitive Radio Network Simulation")
+st.markdown("This dashboard simulates the **actual DQN-based algorithm** used in the project in real-time.")
 
 col1, col2, col3, col4 = st.columns(4)
 metric_reward = col1.empty()
