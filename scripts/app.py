@@ -1,27 +1,28 @@
 """
 Continual RL Cognitive Radio Network — Real-Time Channel Selection Simulator
-Streamlit app | Self-contained, no external model weights required.
-
-Embeds the CRN environment, DQN agent, ADWIN detector, and EWC module
-directly so the app is deployable to Streamlit Cloud from a bare GitHub repo.
+Streamlit app | Connected to real PyTorch model checkpoints.
 """
 
 import time
 import random
 import math
+import os
 from collections import deque
 
 import numpy as np
+import pandas as pd
 import streamlit as st
-import plotly.graph_objects as go
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # PAGE CONFIG
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 st.set_page_config(
-    page_title="CRN-RL Simulator",
-    page_icon="📡",
+    page_title="CRN-RL Model Simulator",
+    page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -34,7 +35,6 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;600&display=swap');
 
-/* ── Base ── */
 html, body, [data-testid="stAppViewContainer"] {
     background-color: #0A0E1A;
     color: #C8D6E5;
@@ -46,12 +46,10 @@ html, body, [data-testid="stAppViewContainer"] {
 }
 [data-testid="stSidebar"] * { color: #C8D6E5 !important; }
 
-/* ── Headers ── */
 h1, h2, h3 { font-family: 'Share Tech Mono', monospace; letter-spacing: 0.04em; }
 h1 { color: #0FF4C6; font-size: 1.5rem; }
 h3 { color: #4A90D9; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.1em; }
 
-/* ── Metric cards ── */
 [data-testid="metric-container"] {
     background: #1A2235;
     border: 1px solid #1E2D45;
@@ -60,9 +58,7 @@ h3 { color: #4A90D9; font-size: 0.95rem; text-transform: uppercase; letter-spaci
 }
 [data-testid="metric-container"] label { color: #6B8299 !important; font-size: 0.75rem !important; text-transform: uppercase; letter-spacing: 0.08em; }
 [data-testid="metric-container"] [data-testid="stMetricValue"] { font-family: 'Share Tech Mono', monospace; color: #0FF4C6 !important; font-size: 1.6rem !important; }
-[data-testid="metric-container"] [data-testid="stMetricDelta"] { font-size: 0.8rem !important; }
 
-/* ── Buttons ── */
 .stButton > button {
     background: #1A2235;
     border: 1px solid #4A90D9;
@@ -70,17 +66,11 @@ h3 { color: #4A90D9; font-size: 0.95rem; text-transform: uppercase; letter-spaci
     border-radius: 6px;
     font-family: 'Share Tech Mono', monospace;
     font-size: 0.85rem;
-    letter-spacing: 0.05em;
     transition: all 0.15s;
     width: 100%;
 }
 .stButton > button:hover { background: #4A90D9; color: #0A0E1A; }
 
-/* ── Sliders & selects ── */
-[data-testid="stSlider"] .st-emotion-cache-1vbkxwb { color: #0FF4C6; }
-.stSelectbox label, .stSlider label { color: #6B8299 !important; font-size: 0.78rem !important; text-transform: uppercase; letter-spacing: 0.08em; }
-
-/* ── Channel grid ── */
 .ch-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 0 0 20px 0; }
 .ch-card {
     border-radius: 8px;
@@ -89,8 +79,6 @@ h3 { color: #4A90D9; font-size: 0.95rem; text-transform: uppercase; letter-spaci
     font-family: 'Share Tech Mono', monospace;
     font-size: 0.8rem;
     border: 2px solid transparent;
-    transition: all 0.2s;
-    position: relative;
 }
 .ch-clear  { background: #0D1F16; border-color: #1A4A30; color: #0FF4C6; }
 .ch-busy   { background: #1F0D10; border-color: #4A1A20; color: #FF3B5C; }
@@ -98,10 +86,8 @@ h3 { color: #4A90D9; font-size: 0.95rem; text-transform: uppercase; letter-spaci
 .ch-selected-clear { background: #0A2E20; border-color: #0FF4C6; color: #0FF4C6; box-shadow: 0 0 14px #0FF4C630; }
 .ch-selected-busy  { background: #2E0A0F; border-color: #FF3B5C; color: #FF3B5C; box-shadow: 0 0 14px #FF3B5C30; }
 .ch-label  { font-size: 0.65rem; color: #6B8299; margin-bottom: 4px; }
-.ch-status { font-size: 0.75rem; margin-top: 4px; }
 .ch-prob   { font-size: 0.7rem; color: #6B8299; margin-top: 2px; }
 
-/* ── Log ── */
 .log-box {
     background: #0D1220;
     border: 1px solid #1E2D45;
@@ -117,27 +103,35 @@ h3 { color: #4A90D9; font-size: 0.95rem; text-transform: uppercase; letter-spaci
 .log-col { color: #FF3B5C; }
 .log-idl { color: #FFB800; }
 .log-det { color: #C084FC; }
-
-/* ── Divider ── */
 .divider { border: none; border-top: 1px solid #1E2D45; margin: 16px 0; }
-
-/* ── Status badge ── */
 .status-badge {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 20px;
-    font-family: 'Share Tech Mono', monospace;
-    font-size: 0.75rem;
-    font-weight: 600;
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-family: 'Share Tech Mono', monospace; font-size: 0.75rem; font-weight: 600;
 }
 .badge-run  { background: #0A2E20; color: #0FF4C6; border: 1px solid #0FF4C6; }
 .badge-stop { background: #1A2235; color: #6B8299; border: 1px solid #2A3A55; }
-.badge-det  { background: #1A0A2E; color: #C084FC; border: 1px solid #C084FC; }
 </style>
 """, unsafe_allow_html=True)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# CRN ENVIRONMENT (embedded — no notebook import needed)
+# PYTORCH DQN ARCHITECTURE
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class DQN(nn.Module):
+    def __init__(self, input_dim: int, output_dim: int):
+        super(DQN, self).__init__()
+        self.fc1 = nn.Linear(input_dim, 256)
+        self.fc2 = nn.Linear(256, 256)
+        self.fc3 = nn.Linear(256, output_dim)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        return self.fc3(x)
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# CRN ENVIRONMENT
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 TASK_META = {
@@ -155,8 +149,6 @@ HISTORY_LENGTH = 5
 
 
 class CRNEnvironment:
-    """Lightweight CRN environment mirroring the notebook's CRNEnv."""
-
     def __init__(self, seed: int, base_low: float, base_high: float):
         rng = np.random.RandomState(seed)
         self.pu_probs = rng.uniform(base_low, base_high, NUM_CHANNELS)
@@ -211,42 +203,11 @@ class CRNEnvironment:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# AGENT (heuristic DQN proxy — greedy myopic with Boltzmann noise)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-class HeuristicAgent:
-    """
-    Simulates a trained DQN agent without requiring saved weights.
-    Uses a myopic greedy policy (pick least-occupied channel) with
-    a small Boltzmann noise term to mimic learned Q-value selection.
-    """
-
-    def __init__(self, tau: float = 0.3):
-        self.tau = tau
-
-    def get_action(self, env: CRNEnvironment) -> int:
-        # Score = negative mean occupancy history (lower occ = better)
-        scores = []
-        for c in range(NUM_CHANNELS):
-            occ_mean = float(np.mean(env.occ_hist[c]))
-            snr_mean = float(np.mean(env.snr_hist[c]))
-            scores.append(-(occ_mean + 0.2 * snr_mean))
-
-        # Boltzmann sampling over channel scores
-        scores_arr = np.array(scores)
-        scores_arr -= scores_arr.max()
-        exp_s = np.exp(scores_arr / (self.tau + 1e-8))
-        probs = exp_s / exp_s.sum()
-        return int(np.random.choice(NUM_CHANNELS, p=probs))
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# ADWIN (pure-Python, same as notebook)
+# ADWIN DRIFT DETECTOR
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 class ADWIN:
     _MAX_BUCKETS = 5
-
     class _Bucket:
         __slots__ = ("total", "variance", "size")
         def __init__(self): self.total = self.variance = 0.0; self.size = 0
@@ -285,8 +246,7 @@ class ADWIN:
             m = self._Bucket(); m.size = b1.size + b2.size; m.total = b1.total + b2.total
             d = (b2.total/b2.size - b1.total/b1.size) if b1.size > 0 and b2.size > 0 else 0.0
             m.variance = b1.variance + b2.variance + d**2 * b1.size * b2.size / max(m.size, 1)
-            self._bucket_rows[level] = row[:-2]
-            self._bucket_rows[level+1].insert(0, m)
+            self._bucket_rows[level] = row[:-2]; self._bucket_rows[level+1].insert(0, m)
             level += 1
 
     def _check_drift(self):
@@ -319,36 +279,12 @@ class ADWIN:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# SESSION STATE INIT
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-def init_state(task_key: str, delta: float):
-    meta = TASK_META[task_key]
-    st.session_state.env       = CRNEnvironment(meta["seed"], meta["low"], meta["high"])
-    st.session_state.agent     = HeuristicAgent()
-    st.session_state.adwin     = ADWIN(delta=delta)
-    st.session_state.step      = 0
-    st.session_state.rewards   = deque(maxlen=150)
-    st.session_state.collisions = 0
-    st.session_state.successes  = 0
-    st.session_state.idles      = 0
-    st.session_state.log        = deque(maxlen=40)
-    st.session_state.last_action = None
-    st.session_state.last_outcome = None
-    st.session_state.drift_count  = 0
-    st.session_state.initialized  = True
-
-def ensure_init(task_key, delta):
-    if not st.session_state.get("initialized"):
-        init_state(task_key, delta)
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# SIDEBAR
+# SIDEBAR & MODEL LOADING
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 with st.sidebar:
-    st.markdown("# 📡 CRN-RL Sim")
-    st.markdown("<p style='color:#6B8299;font-size:0.78rem;margin-top:-8px'>Continual RL · Cognitive Radio</p>", unsafe_allow_html=True)
+    st.markdown("# 📡 CRN-RL Model Hub")
+    st.markdown("<p style='color:#6B8299;font-size:0.78rem;margin-top:-8px'>True DQN Weights Viewer</p>", unsafe_allow_html=True)
     st.markdown("<hr class='divider'>", unsafe_allow_html=True)
 
     st.markdown("### Diurnal Task")
@@ -358,69 +294,92 @@ with st.sidebar:
         label_visibility="collapsed"
     )
     meta = TASK_META[task_key]
-    st.markdown(f"<p style='color:#4A90D9;font-size:0.75rem;font-family:Share Tech Mono,monospace'>{meta['desc']}</p>", unsafe_allow_html=True)
 
     st.markdown("<hr class='divider'>", unsafe_allow_html=True)
-    st.markdown("### Agent Settings")
+    st.markdown("### Checkpoint Selection")
 
-    delta = st.select_slider(
-        "ADWIN sensitivity (δ)",
-        options=[0.001, 0.002, 0.005, 0.01, 0.05, 0.1],
-        value=0.05,
-        help="Lower δ = more sensitive drift detection. 0.05 is recommended for this simulation."
-    )
-
-    speed = st.slider(
-        "Simulation speed (steps/sec)",
-        min_value=1, max_value=20, value=5, step=1
-    )
+    # Discover available checkpoint files in the checkpoints folder
+    chk_dir = "checkpoints"
+    available_ckpts = []
+    if os.path.exists(chk_dir):
+        available_ckpts = [f for f in os.listdir(chk_dir) if f.endswith("_policy.pt") or f == "rollback.pt"]
+    
+    if available_ckpts:
+        selected_ckpt = st.selectbox("Load Checkpoint File", sorted(available_ckpts))
+        ckpt_path = os.path.join(chk_dir, selected_ckpt)
+    else:
+        selected_ckpt = None
+        ckpt_path = None
+        st.warning("⚠️ No checkpoints found in 'checkpoints/'. Using random/uninitialized weights until trained.")
 
     st.markdown("<hr class='divider'>", unsafe_allow_html=True)
-    st.markdown("### Controls")
+    st.markdown("### Simulator Settings")
+    delta = st.select_slider("ADWIN sensitivity (δ)", options=[0.001, 0.002, 0.005, 0.01, 0.05, 0.1], value=0.05)
+    speed = st.slider("Simulation speed (steps/sec)", min_value=1, max_value=20, value=5, step=1)
 
+    st.markdown("<hr class='divider'>", unsafe_allow_html=True)
     col_a, col_b = st.columns(2)
     with col_a:
-        run_btn   = st.button("▶  Run",   key="run")
-        reset_btn = st.button("↺  Reset", key="reset")
+        run_btn   = st.button("▶ Run", key="run")
+        reset_btn = st.button("↺ Reset", key="reset")
     with col_b:
-        pause_btn = st.button("⏸  Pause", key="pause")
-        step_btn  = st.button("⏭  Step",  key="step_one")
+        pause_btn = st.button("⏸ Pause", key="pause")
+        step_btn  = st.button("⏭ Step", key="step_one")
 
-    if run_btn:
-        st.session_state.running = True
-    if pause_btn:
-        st.session_state.running = False
-    if reset_btn:
-        st.session_state.running = False
-        init_state(task_key, delta)
-    if step_btn:
-        st.session_state.running = False
-        st.session_state.do_step = True
-
-    if not st.session_state.get("running"):
-        st.session_state.setdefault("running", False)
-
-    st.markdown("<hr class='divider'>", unsafe_allow_html=True)
-    st.markdown("### Legend")
-    st.markdown("""
-<div style='font-family:Share Tech Mono,monospace;font-size:0.72rem;line-height:2'>
-<span style='color:#0FF4C6'>■</span> Agent selected · clear<br>
-<span style='color:#FF3B5C'>■</span> Agent selected · collision<br>
-<span style='color:#1A4A30'>■</span> Channel clear (PU idle)<br>
-<span style='color:#4A1A20'>■</span> Channel busy (PU active)<br>
-<span style='color:#FFB800'>■</span> Agent idle (no tx)<br>
-<span style='color:#C084FC'>⚡</span> ADWIN drift detected
-</div>
-""", unsafe_allow_html=True)
+    if run_btn: st.session_state.running = True
+    if pause_btn: st.session_state.running = False
+    if reset_btn: st.session_state.running = False; st.session_state.initialized = False
+    if step_btn: st.session_state.running = False; st.session_state.do_step = True
+    if not st.session_state.get("running"): st.session_state.setdefault("running", False)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# MAIN PANEL
+# INITIALIZE STATE & LOAD MODEL WEIGHTS
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-ensure_init(task_key, delta)
+def init_state():
+    meta = TASK_META[task_key]
+    env = CRNEnvironment(meta["seed"], meta["low"], meta["high"])
+    
+    # Initialize PyTorch DQN Model
+    net = DQN(env.state_dim, env.action_space)
+    net.eval()
+
+    # Load checkpoint weights if available
+    if ckpt_path and os.path.exists(ckpt_path):
+        try:
+            checkpoint_data = torch.load(ckpt_path, map_location="cpu")
+            # Handle different checkpoint dictionary structures
+            if isinstance(checkpoint_data, dict) and 'policy' in checkpoint_data:
+                net.load_state_dict(checkpoint_data['policy'])
+            elif isinstance(checkpoint_data, dict):
+                net.load_state_dict(checkpoint_data)
+            st.sidebar.success(f"Successfully loaded: {selected_ckpt}")
+        except Exception as e:
+            st.sidebar.error(f"Error loading weights: {e}")
+
+    st.session_state.env = env
+    st.session_state.net = net
+    st.session_state.adwin = ADWIN(delta=delta)
+    st.session_state.step = 0
+    st.session_state.rewards = deque(maxlen=150)
+    st.session_state.collisions = 0
+    st.session_state.successes = 0
+    st.session_state.idles = 0
+    st.session_state.log = deque(maxlen=40)
+    st.session_state.last_action = None
+    st.session_state.last_outcome = None
+    st.session_state.drift_count = 0
+    st.session_state.initialized = True
+
+if not st.session_state.get("initialized"):
+    init_state()
+
 ss = st.session_state
 
-# Title row
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# MAIN PANEL DISPLAY
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 title_col, badge_col = st.columns([5, 1])
 with title_col:
     st.markdown(f"## {task_key}")
@@ -430,33 +389,36 @@ with badge_col:
     else:
         st.markdown("<div style='margin-top:18px'><span class='status-badge badge-stop'>● PAUSED</span></div>", unsafe_allow_html=True)
 
-# ── Simulation step logic ─────────────────────────────────────────
-
 def do_one_step():
-    env, agent, adwin = ss.env, ss.agent, ss.adwin
-    state = env.get_state()
-    action = agent.get_action(env)
+    env, net, adwin = ss.env, ss.net, ss.adwin
+    
+    # Get state tensor for PyTorch model forward pass
+    state_arr = env.get_state()
+    state_tensor = torch.tensor(state_arr, dtype=torch.float32).unsqueeze(0)
+
+    # Actual PyTorch model forward inference (Greedy argmax action selection)
+    with torch.no_grad():
+        q_values = net(state_tensor)
+        action = torch.argmax(q_values, dim=1).item()
+
     _, reward, outcome = env.step(action)
 
     ss.step += 1
     ss.rewards.append(reward)
-    ss.last_action  = action
+    ss.last_action = action
     ss.last_outcome = outcome
 
-    if outcome == "success":   ss.successes  += 1
+    if outcome == "success": ss.successes += 1
     elif outcome == "collision": ss.collisions += 1
-    else:                       ss.idles      += 1
+    else: ss.idles += 1
 
-    # ADWIN on reward stream
     adwin.update(reward)
-    drift = adwin.drift_detected
-    if drift:
+    if adwin.drift_detected:
         ss.drift_count += 1
-        adwin.__init__(adwin.delta)  # reset window after detection
+        adwin.__init__(adwin.delta)
 
-    # Log entry
     step_str = f"[{ss.step:05d}]"
-    if drift:
+    if adwin.drift_detected:
         ss.log.appendleft(f"<span class='log-det'>{step_str} ⚡ DRIFT DETECTED — ADWIN triggered (#{ss.drift_count})</span>")
     if outcome == "success":
         ss.log.appendleft(f"<span class='log-ok'>{step_str} CH{action+1:02d} → TX OK   +{reward:.2f}</span>")
@@ -469,46 +431,40 @@ if ss.get("do_step"):
     do_one_step()
     ss.do_step = False
 
-# ── Metrics strip ──────────────────────────────────────────────────
-
+# Metrics Bar
 total_tx = ss.successes + ss.collisions
 collision_rate = ss.collisions / total_tx if total_tx > 0 else 0.0
-throughput     = ss.successes / max(ss.step, 1)
-mean_reward    = float(np.mean(ss.rewards)) if ss.rewards else 0.0
+throughput = ss.successes / max(ss.step, 1)
+mean_reward = float(np.mean(ss.rewards)) if ss.rewards else 0.0
 
 m1, m2, m3, m4, m5 = st.columns(5)
-m1.metric("Steps",          f"{ss.step:,}")
-m2.metric("Mean Reward",    f"{mean_reward:+.3f}")
-m3.metric("Throughput",     f"{throughput:.3f}")
+m1.metric("Steps", f"{ss.step:,}")
+m2.metric("Mean Reward", f"{mean_reward:+.3f}")
+m3.metric("Throughput", f"{throughput:.3f}")
 m4.metric("Collision Rate", f"{collision_rate:.3f}")
-m5.metric("Drift Events",   ss.drift_count)
+m5.metric("Drift Events", ss.drift_count)
 
 st.markdown("<hr class='divider'>", unsafe_allow_html=True)
 
-# ── Channel grid ───────────────────────────────────────────────────
-
+# Channel Grid Visualization
 occ = ss.env.current_occupancy()
 action = ss.last_action
 
 ch_html = "<div class='ch-grid'>"
 for c in range(NUM_CHANNELS):
     is_selected = (action is not None and action == c)
-    is_busy     = occ[c] == 1
-    pu_prob     = ss.env.pu_probs[c]
-    occ_mean    = float(np.mean(ss.env.occ_hist[c])) if ss.env.occ_hist[c] else pu_prob
+    is_busy = occ[c] == 1
+    pu_prob = ss.env.pu_probs[c]
+    occ_mean = float(np.mean(ss.env.occ_hist[c])) if ss.env.occ_hist[c] else pu_prob
 
     if is_selected and not is_busy:
-        css = "ch-selected-clear"
-        status = "TX ✓"
+        css = "ch-selected-clear"; status = "TX ✓"
     elif is_selected and is_busy:
-        css = "ch-selected-busy"
-        status = "COLLISION ✗"
+        css = "ch-selected-busy"; status = "COLLISION ✗"
     elif is_busy:
-        css = "ch-busy"
-        status = "PU ACTIVE"
+        css = "ch-busy"; status = "PU ACTIVE"
     else:
-        css = "ch-clear"
-        status = "CLEAR"
+        css = "ch-clear"; status = "CLEAR"
 
     bar_fill = int(occ_mean * 10)
     bar = "█" * bar_fill + "░" * (10 - bar_fill)
@@ -517,20 +473,18 @@ for c in range(NUM_CHANNELS):
     <div class='ch-card {css}'>
         <div class='ch-label'>CH {c+1:02d}</div>
         <div style='font-size:1.0rem;margin:4px 0'>{status}</div>
-        <div class='ch-prob' title='PU occupancy probability'>{bar}</div>
+        <div class='ch-prob'>{bar}</div>
         <div class='ch-prob'>PU: {pu_prob:.2f}</div>
     </div>"""
 
-# Idle action display
 idle_css = "ch-idle" if action == NUM_CHANNELS else "ch-clear"
-ch_html += f"<div class='ch-card {idle_css}' style='grid-column:span 4'><div class='ch-label'>IDLE ACTION</div><div style='font-size:0.85rem'>No transmission · penalty {ss.env.R_idle}</div></div>"
+ch_html += f"<div class='ch-card {idle_css}' style='grid-column:span 4'><div class='ch-label'>IDLE ACTION</div><div style='font-size:0.85rem'>No transmission</div></div>"
 ch_html += "</div>"
 
-st.markdown("<h3>Channel Status</h3>", unsafe_allow_html=True)
+st.markdown("<h3>Neural Network Channel Selection</h3>", unsafe_allow_html=True)
 st.markdown(ch_html, unsafe_allow_html=True)
 
-# ── Reward chart ───────────────────────────────────────────────────
-
+# Charts & Logs
 chart_col, log_col = st.columns([3, 2])
 
 with chart_col:
@@ -544,49 +498,19 @@ with chart_col:
             w = rewards_list[max(0, i-window):i+1]
             rolling.append(float(np.mean(w)))
 
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=xs, y=rewards_list,
-            mode="lines",
-            line=dict(color="#1E3A4A", width=1),
-            name="Raw reward",
-            showlegend=False,
-        ))
-        fig.add_trace(go.Scatter(
-            x=xs, y=rolling,
-            mode="lines",
-            line=dict(color="#0FF4C6", width=2),
-            name=f"Rolling {window}-step mean",
-            showlegend=True,
-        ))
-        fig.add_hline(y=0, line_dash="dot", line_color="#2A3A55", line_width=1)
-        fig.update_layout(
-            paper_bgcolor="#0D1220",
-            plot_bgcolor="#0D1220",
-            margin=dict(l=8, r=8, t=8, b=8),
-            height=200,
-            font=dict(family="Share Tech Mono, monospace", color="#6B8299", size=11),
-            xaxis=dict(gridcolor="#1E2D45", showgrid=True, title="Step"),
-            yaxis=dict(gridcolor="#1E2D45", showgrid=True, title="Reward",
-                       range=[-1.2, 1.2]),
-            legend=dict(
-                bgcolor="#0D1220", bordercolor="#1E2D45", borderwidth=1,
-                font=dict(size=10), x=0.01, y=0.99,
-            ),
-        )
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        chart_data = pd.DataFrame({
+            "Raw reward": rewards_list,
+            f"Rolling {window}-step mean": rolling
+        }, index=xs)
+        st.line_chart(chart_data, color=["#1E3A4A", "#0FF4C6"], height=200, use_container_width=True)
     else:
-        st.markdown("<p style='color:#6B8299;font-size:0.8rem;padding:40px 0;text-align:center'>Press ▶ Run to start the simulation</p>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#6B8299;font-size:0.8rem;padding:40px 0;text-align:center'>Press ▶ Run to start the live model inference</p>", unsafe_allow_html=True)
 
 with log_col:
     st.markdown("<h3>Event Log</h3>", unsafe_allow_html=True)
-    log_html = "<div class='log-box'>" + "<br>".join(ss.log) + "</div>"
-    st.markdown(log_html, unsafe_allow_html=True)
+    st.markdown("<div class='log-box'>" + "<br>".join(ss.log) + "</div>", unsafe_allow_html=True)
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# AUTO-RERUN LOOP
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
+# Auto-run Loop
 if ss.get("running"):
     do_one_step()
     time.sleep(1.0 / speed)
