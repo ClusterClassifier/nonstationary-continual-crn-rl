@@ -1,24 +1,8 @@
 """
 Continual RL Cognitive Radio Network — Real-Time Model Dashboard
-
-What is real in this dashboard:
-- Loads the actual saved PyTorch policy + target networks from task_*_policy.pt checkpoints.
-- Infers the channel count and state-history length from the checkpoint architecture.
-- Runs real greedy DQN inference at every simulator step.
-- Computes the real one-step TD target/error from the loaded policy and target networks.
-- Feeds absolute TD error (not reward) to the same style of ADWIN drift detector used in training.
-- Uses the same task occupancy ranges, state construction, action space, and reward structure as training.
-- Supports manual task changes and an automatic T1→T7 diurnal non-stationary cycle.
-
-Important scope note:
-EWC, episodic replay, Fisher consolidation, rollback, and MEC are training/adaptation mechanisms.
-A saved inference checkpoint does not execute those mechanisms by itself. The dashboard therefore
-shows their saved artifact availability and the live signals that drove them during training, without
-pretending that inference-only execution is performing Fisher/MEC updates.
 """
 
 from __future__ import annotations
-
 import hashlib
 import io
 import math
@@ -910,7 +894,10 @@ st.markdown("<hr class='divider'>", unsafe_allow_html=True)
 occ = ss.last_decision_occupancy if ss.last_action is not None else ss.env.current_occupancy()
 action = ss.last_action
 
-ch_html = "<div class='ch-grid'>"
+# IMPORTANT: keep the HTML compact/no-leading-indentation. Markdown interprets
+# four-space-indented HTML after a blank line as a code block, which caused only
+# the first channel card to render while the remaining markup appeared as text.
+channel_cards = []
 for c in range(meta["num_channels"]):
     selected = action == c
     busy = occ[c] == 1
@@ -929,23 +916,24 @@ for c in range(meta["num_channels"]):
     bar_fill = int(np.clip(round(occ_mean * 10), 0, 10))
     bar = "█" * bar_fill + "░" * (10 - bar_fill)
 
-    ch_html += f"""
-    <div class='ch-card {css}'>
-      <div class='ch-label'>CH {c + 1:02d}</div>
-      <div style='font-size:0.95rem;margin:4px 0'>{status}</div>
-      <div class='ch-prob'>{bar}</div>
-      <div class='ch-prob'>PU prior: {pu_prob:.2f}</div>
-    </div>
-    """
+    channel_cards.append(
+        f"<div class='ch-card {css}'>"
+        f"<div class='ch-label'>CH {c + 1:02d}</div>"
+        f"<div style='font-size:0.95rem;margin:4px 0'>{status}</div>"
+        f"<div class='ch-prob'>{bar}</div>"
+        f"<div class='ch-prob'>PU prior: {pu_prob:.2f}</div>"
+        f"</div>"
+    )
 
 idle_css = "ch-idle" if action == meta["num_channels"] else "ch-clear"
-ch_html += f"""
-<div class='ch-card {idle_css}' style='grid-column:span 4'>
-  <div class='ch-label'>IDLE ACTION</div>
-  <div style='font-size:0.82rem'>No transmission · reward = -0.05</div>
-</div>
-</div>
-"""
+channel_cards.append(
+    f"<div class='ch-card {idle_css}' style='grid-column:1 / -1'>"
+    f"<div class='ch-label'>IDLE ACTION</div>"
+    f"<div style='font-size:0.82rem'>No transmission · reward = -0.05</div>"
+    f"</div>"
+)
+
+ch_html = "<div class='ch-grid'>" + "".join(channel_cards) + "</div>"
 
 st.markdown("<h3>Decision-Time Spectrum State</h3>", unsafe_allow_html=True)
 st.markdown(ch_html, unsafe_allow_html=True)
