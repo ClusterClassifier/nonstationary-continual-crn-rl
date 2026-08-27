@@ -1,75 +1,166 @@
-# **Continual Reinforcement Learning for Non-Stationary Cognitive Radio Networks 📡**
+# Continual Reinforcement Learning for Non-Stationary Cognitive Radio Networks 📡
 
-Implementation of a Continual Reinforcement Learning (CRL) framework designed for autonomous Cognitive Radio Networks (CRNs). The system enables a secondary user agent to dynamically adapt to non-stationary, diurnal spectrum traffic patterns without suffering from catastrophic forgetting.
+A Continual Reinforcement Learning (CRL) framework for adaptive spectrum access in non-stationary Cognitive Radio Networks (CRNs). The project models changing Primary User (PU) activity across a full diurnal cycle and trains a Secondary User (SU) to adapt its channel-selection policy while reducing catastrophic forgetting.
 
-## **📖 Overview**
+## 📖 Overview
 
-In real-world CRNs, Primary User (PU) traffic patterns shift significantly throughout the day (e.g., from sparse morning traffic to heavy evening video streaming). Traditional Reinforcement Learning (RL) agents overwrite their learned weights when adapting to new traffic regimes, completely forgetting how to navigate previous environments (Catastrophic Forgetting).
+Spectrum occupancy in a CRN can change significantly throughout the day. A policy trained for one traffic regime may therefore perform poorly when PU activity changes, while sequential retraining can overwrite knowledge acquired from earlier environments.
 
-This framework solves this using a Deep Q-Network (DQN) integrated with three core Continual Learning mechanisms:
+This project addresses that problem using a **Deep Q-Network (DQN)** combined with continual-learning and drift-adaptation mechanisms:
 
-1. **Autonomous Concept Drift Detection (ADWIN):** Monitors the Temporal Difference (TD) error stream to detect task boundaries autonomously without explicit task labels.  
-2. **Elastic Weight Consolidation (EWC):** Applies a dynamic, adaptive penalty (![][image1]) to protect critical neural network weights associated with past environments.  
-3. **Episodic Memory Replay:** Curates and rehearses the "Top-K" most surprising transitions from previous tasks to anchor the EWC penalty and ensure robust backward transfer.
+1. **ADWIN Concept Drift Detection** — monitors the mean absolute Temporal Difference (TD) error and detects statistically significant changes in the learning stream.
 
-## **📊 Evaluation Results (IEEE Standard Metrics)**
+2. **Adaptive Elastic Weight Consolidation (EWC)** — protects parameters important to previously learned policies using a Fisher Information Matrix (FIM). The EWC coefficient \(\lambda_t\) adapts according to recent TD-error variance to balance stability and plasticity.
 
-The framework was evaluated across a 7-task diurnal cycle (T1 to T7), ranging from extremely sparse IoT traffic to heavily congested video streaming environments. Evaluated over 100 episodes per task, the agent achieved exceptional stability.
+3. **Episodic Memory Replay** — preserves high-information transitions selected using absolute TD error and mixes them with the active replay buffer during later training.
 
-**Key Performance Metrics (After Training Task 7):**
+4. **Rollback-Based Recovery** — maintains lightweight policy checkpoints that can be restored when concept drift is detected.
 
-* **Positive Backward Transfer (BWT):** \+7.39. The agent successfully utilized generalized knowledge from later tasks to retroactively improve its performance on earlier environments.  
-* **Negative Forgetting Rates (FR):** Standard algorithms struggle to keep FR low. This agent achieved *negative* forgetting rates (e.g., FR\_T3 \= \-65.91), meaning performance actually improved on past tasks over time.  
-* **High-Traffic Resilience:** In the most congested environment (T6: 95% PU activity), the agent maintained a high mean reward (725.56) while keeping the collision rate to a strictly cautious 10.8%. In low-to-medium traffic tasks (T1, T4, T7), collision rates remained at or near 0.0% with near-perfect rewards.
+5. **Asynchronous MEC Simulation** — offloads Fisher Information Matrix computation to a non-blocking worker thread, allowing the main spectrum-learning loop to continue while consolidation data is computed.
 
-## **🗂️ Repository Structure**
+## 🧠 CRN Environment
 
-* Training: The main entry point. Coordinates the sequential training loop, ADWIN drift signals, EWC updates, and MEC offloading.  
-* Evaluation: Executes the IEEE evaluation protocol, generating the evaluation matrix, Forgetting Rate (FR), and Backward Transfer (BWT).  
-* Agents: Contains the Feedforward DQN architecture and Boltzmann exploration policy.  
-* Environment: Simulates the non-stationary 8-channel CRN environment across 7 distinct diurnal tasks.  
-* Elastic Weight Consolidation: Implements the Elastic Weight Consolidation logic and adaptive ![][image1] penalty scheduler.  
-* Change-Point Detection: Wraps the river ADWIN algorithm for autonomous concept drift detection based on TD-error.  
-* Replay Classes: Manages the standard experience replay buffer and the Top-K Episodic Memory buffer.  
-* MEC Server: Simulates an asynchronous Mobile Edge Computing (MEC) server to compute the Fisher Information Matrix (FIM) without blocking edge training.  
-* app.py: A fully interactive, real-time web simulation dashboard built with Streamlit.  
-* Exports: Generates publication-quality .pdf evaluation heatmaps and performance evolution charts.
+The simulator contains **8 spectrum channels** and an additional idle action. Each observation contains recent channel occupancy and normalized signal information across a five-step history.
 
-## **🚀 Installation & Setup**
+Seven sequential environments represent different PU traffic regimes:
 
-1. Clone this repository:  
-   git clone https://github.com/ClusterClassifier/nonstationary-continual-crn-rl.git  
-   cd nonstationary-continual-crn-rl
+| Task | Period              | PU Activity |
+| ---- | ------------------- | ----------- |
+| T1   | Early commute       | Low–Medium  |
+| T2   | Peak commute        | High        |
+| T3   | Midday traffic      | Medium      |
+| T4   | Sparse IoT activity | Low         |
+| T5   | Evening commute     | High        |
+| T6   | Heavy streaming     | Very High   |
+| T7   | Night activity      | Very Low    |
 
-2. Install the required dependencies:  
-   pip install \-r requirements.txt
+Each task is trained for **10,000 environment steps**, creating a 70,000-step non-stationary learning sequence.
 
-   *(Note: The river library is required for ADWIN concept drift detection, and streamlit is required for the live simulation dashboard).*
+## 📊 Evaluation
 
-## **🧠 Running the Code**
+The notebook includes a complete evaluation pipeline for both spectrum-access performance and continual learning.
 
-### **1\. Training the Agent**
+Reported metrics include:
 
-To run the full sequential training process across all 7 tasks:
+* Final average performance and diagonal task performance
+* Backward Transfer (BWT)
+* Forward Transfer (FWT) against a random-policy reference
+* Absolute and normalized forgetting
+* Mean episode reward with standard deviation and 95% confidence intervals
+* Collision / PU interference rate
+* Successful transmission rate
+* Throughput in successful transmissions per environment step
+* Normalized access efficiency
+* Channel utilization and idle rate
+* Normalized channel-selection entropy
+* Adaptation speed
+* ADWIN detection statistics and detection delay
+* DQN, EWC, and total training loss
+* Adaptive EWC coefficient trajectory
+* TD-error evolution
 
+The final policy and the **Random** and **Greedy/Myopic** baselines are evaluated over **200 episodes per task**.
+
+The notebook also includes IEEE-standard charts and comparison outputs for research-oriented reporting.
+
+## 🧪 Ablation Study
+
+A built-in ablation pipeline isolates the contribution of the major components using the same task sequence and training budget:
+
+* Vanilla DQN
+* DQN + Fixed EWC
+* DQN + Adaptive EWC
+* DQN + ADWIN
+* DQN + Adaptive EWC + ADWIN
+* **Full Model: Adaptive EWC + ADWIN + Episodic Replay**
+
+The experiment is configured for **five independent training seeds**:
+
+```python
+[42, 123, 2024, 31415, 27182]
+```
+
+Results are aggregated across independent runs using mean, standard deviation, and 95% confidence intervals.
+
+## 📈 Generated Outputs
+
+Training and evaluation generate:
+
+```text
+checkpoints/
+├── metrics.csv
+├── training_log.csv
+├── baseline_comparison.csv
+├── experiment_metadata.csv
+├── metric_definitions.csv
+├── ieee_full_metric_report.csv
+└── ablations/
+    ├── ablation_all_seeds.csv
+    ├── ablation_per_task.csv
+    ├── ablation_summary.csv
+    ├── ablation_effect_vs_full.csv
+    └── fig_ablation_acc.pdf
+```
+
+Additional PDF figures include the continual-learning evaluation matrix, retention trace, normalized forgetting, throughput/access efficiency, PU interference, baseline comparisons, loss decomposition, adaptive EWC coefficient, and TD-error trajectory.
+
+## 🗂️ Repository Structure
+
+* **Training** — sequential CRN training, drift response, EWC updates, episodic replay, rollback, and MEC coordination.
+* **Evaluation** — continual-learning and spectrum-access evaluation metrics.
+* **Agents** — DQN architecture and Boltzmann exploration policy.
+* **Environment** — 8-channel CRN simulator and seven diurnal PU-traffic regimes.
+* **EWC** — adaptive Elastic Weight Consolidation and Fisher-based parameter protection.
+* **Change-Point Detection** — ADWIN implementation operating on the TD-error stream.
+* **Replay** — active experience replay and Top-K episodic memory.
+* **MEC Server** — asynchronous Fisher Information Matrix computation.
+* **Notebook** — end-to-end training, evaluation, chart generation, validation, and ablation experiments.
+* **app.py** — interactive Streamlit simulation of the trained CRN agent.
+
+## 🚀 Installation
+
+```bash
+git clone https://github.com/ClusterClassifier/nonstationary-continual-crn-rl.git
+cd nonstationary-continual-crn-rl
+pip install -r requirements.txt
+```
+
+CUDA is automatically used by PyTorch when an available compatible GPU is detected; otherwise the framework runs on CPU.
+
+## ▶️ Running the Project
+
+### Training
+
+```bash
 python train.py
+```
 
-This will automatically generate checkpoints, rollback files, and the final metrics.csv in the checkpoints/ directory.
+This executes sequential training across all seven CRN environments and generates the model checkpoints and evaluation data.
 
-### **2\. Generating Evaluation Charts**
+### Generate Charts
 
-After training completes, generate the IEEE-formatted evaluation matrix and forgetting charts:
+```bash
+python export_charts.py
+```
 
-python export\_charts.py
+### Interactive Simulation
 
-### **3\. Launching the Real-Time Simulation**
+A deployed version of the real-time simulation is available here:
 
-To visualize the trained agent's decision-making process in real-time, run the interactive Streamlit dashboard:
+**[Launch the CRN RL Streamlit Simulation](https://nonstationary-continual-crn-rl-app.streamlit.app/)**
 
+Or run it locally:
+
+```bash
 streamlit run app.py
+```
 
-The dashboard features an interactive 8-channel RF spectrum monitor, task switching, and real-time performance logging.
+The dashboard visualizes the 8-channel spectrum, PU activity, SU decisions, task changes, and live performance statistics.
+
+## 🔬 Reproducibility
+
+The framework records experiment configuration and supports deterministic random seeds. Evaluation uncertainty is kept separate from variability across independently trained models, while the ablation pipeline performs dedicated multi-seed training for statistically meaningful comparisons.
 
 ## License
-Distributed under the CC-BY-ND License. See `LICENSE` for more information.
 
+Distributed under the **CC-BY-ND License**. See `LICENSE` for more information.
