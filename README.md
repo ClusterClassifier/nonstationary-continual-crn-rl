@@ -1,6 +1,6 @@
 # **Continual Reinforcement Learning for Non-Stationary Cognitive Radio Networks 📡**
 
-This repository contains the official implementation of a Continual Reinforcement Learning (CRL) framework designed for autonomous Cognitive Radio Networks (CRNs). The system enables a secondary user agent to dynamically adapt to non-stationary, diurnal spectrum traffic patterns without suffering from catastrophic forgetting.
+Implementation of a Continual Reinforcement Learning (CRL) framework designed for autonomous Cognitive Radio Networks (CRNs). The system enables a secondary user agent to dynamically adapt to non-stationary, diurnal spectrum traffic patterns without suffering from catastrophic forgetting.
 
 ## **📖 Overview**
 
